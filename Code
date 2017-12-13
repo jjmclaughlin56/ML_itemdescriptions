@@ -1,0 +1,117 @@
+setwd("C:/Users/jmclaughlin/Desktop")
+FuzzyMaster <- read.csv("master_fuzzy_temp.txt", header = TRUE, sep = '~', stringsAsFactors = FALSE)
+FuzzyMaster$INCLUDED <- 'INCLUDED'
+NovembTest <- read.csv("novemberforml.txt", header = TRUE, sep = '~', stringsAsFactors = FALSE)
+FuzzyMaster <- FuzzyMaster[,-2:-3]
+NovembTest <- NovembTest[,-3:-4]
+DecembTest <- read.csv("ORG_RST_Monthly_01312017_ROLLUP.txt", header = TRUE, sep = '~', stringsAsFactors = FALSE)
+
+
+#c <- c('category'); 
+#d <- c('cat', 'dog', 'upon'); 
+#stringdist(c, d, method='jaccard'); 
+
+#a <- "Mary had a little lamb"
+#a.words <- strsplit(a,"[[:blank:]]+")
+#a.int <- hashr::hash(a.words)
+#b <- c("a little lamb had Mary",
+#       "had Mary a little lamb")
+#b.int <- hashr::hash(strsplit(b,"[[:blank:]]+"))
+#seq_dist(a.int,b.int)
+
+
+##max(strin(NovembTest[4,2:6], FuzzyMaster[,1:5], method ='jw'))
+
+##start.time <- Sys.time()
+##fuzzyresults1 <- sapply(DecembTest$ITEM.DESC, function(i) max(stringsim(i, FuzzyMaster$ya_facility_item_description, method = 'jw')))
+##end.time <- Sys.time()
+##time.taken <- end.time - start.time
+##time.taken
+
+##DecembTest$description_similarity <- fuzzyresults1
+##head(DecembTest)
+
+##write.csv(DecembTest, "DecembTest.txt")
+
+
+start.time <- Sys.time()
+fuzzyresultsvc <- sapply(NovembTest$ya_facility_vendor_catalog_no, function(i) max(stringsim(i, FuzzyMaster$ya_facility_vendor_catalog_no, method = 'jw')))
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+NovembTest$vendorcat_similarity <- fuzzyresultsvc
+head(NovembTest)
+
+start.time <- Sys.time()
+fuzzyresultsvm <- sapply(NovembTest$ya_facility_vendor_name, function(i) max(stringsim(i, FuzzyMaster$ya_facility_vendor_name, method = 'jw')))
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+NovembTest$vendor_similarity <- fuzzyresultsvm
+head(NovembTest)
+
+##
+
+start.time <- Sys.time()
+i <- nrow(NovembTest)
+j <- nrow(FuzzyMaster)
+
+
+mtxn <- as.matrix(NovembTest[1:i, 2:4])
+mtxf <- as.matrix(FuzzyMaster[1:j, 1:3])
+
+max(stringsim(mtxn[5,], mtxf[1,], method = 'jw'))
+
+rslt <- stringsim(mtxn[1,], mtxf, method = 'jw')
+
+
+fuzzyresults <- sapply(NovembTest[4, 2:4], function(i) max(stringsim(i, FuzzyMaster[,1:3], method = 'jw')))
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+
+NovembTest2 <- NovembTest
+
+#split up training and test set
+set.seed(1234)
+
+
+ind <- sample(2, nrow(NovembTest), replace = TRUE, prob = c(0.67, 0.33))
+train <- NovembTest[ind==1,-1:-6] #does not include the Result Column
+test <- NovembTest[ind==2,-1:-6] #does not include the result column
+
+trainlables <- NovembTest[ind==1, 1] #correct labels
+testlabes <-  NovembTest[ind==2, 1] #correct labels
+
+trainlables <- as.character(trainlables)
+testlabes <- as.character(testlabes)
+
+trainlables[trainlables=='NO MATCH'] <- 0
+trainlables[trainlables=='PARTIAL RESULT'] <- 0
+trainlables[trainlables=='EXACT'] <- 1
+trainlables[trainlables=='EDITED'] <- 1
+
+testlabes[testlabes=='NO MATCH'] <- 0
+testlabes[testlabes=='PARTIAL RESULT'] <- 0
+testlabes[testlabes=='EXACT'] <- 1          
+testlabes[testlabes=='EDITED'] <- 1          
+
+model <- xgboost(data = as.matrix(train), label = trainlables,
+                 max.depth = 2, eta = 1,nthread = 2,nrounds = 15,objective = "binary:logistic", verbose = 2)
+
+pred <- predict(model ,as.matrix(test))
+prediction <- as.numeric(pred > 0.5)
+print(head(prediction))
+
+err <- mean(as.numeric(pred > 0.5) != testlabes)
+print(paste("test-error=", err))
+
+test$predict <- prediction
+test$true <- testlabes
+
+xgb.save(model, "xgboost.model")
+
+write.csv(NovembTest2, "NovembTest2")
